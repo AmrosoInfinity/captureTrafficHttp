@@ -1,68 +1,69 @@
-name: Grab Traffic Raw Text
+name: Grab Traffic Analysis
 
 on: 
   push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  capture-to-text:
+  analyze-traffic:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Repo
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install TShark & Tcpdump
+      - name: Install System Tools (TShark & Tcpdump)
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark tcpdump
 
-      - name: Setup Python
+      - name: Setup Python Environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
-      # --- PERBAIKAN DI SINI: Instalasi Requests ---
-      - name: Install Dependencies
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests; fi
 
-      - name: Run Capture and App
+      - name: Network Capture & Execution
         run: |
-          # 1. Mulai capture di background
-          sudo tcpdump -i any -w temp.pcap host mcd-gateway.grabtaxi.com &
-          DUMP_PID=$!
+          # 1. Start Capture (Targeting Grab Gateway)
+          sudo tcpdump -i any -w raw_traffic.pcap host mcd-gateway.grabtaxi.com &
+          SNIFF_PID=$!
           
-          # 2. Jalankan Python (Gunakan '|| true' agar jika script 400/error, 
-          # workflow tetap lanjut ke proses konversi teks)
-          python src/app.py || echo "Script Python selesai dengan status non-zero (mungkin 400 Bad Request)"
+          # 2. Run Python Script (Mimicking App Traffic)
+          python src/app.py || echo "Script execution finished with warning/error"
           
-          # 3. Beri jeda paket terakhir masuk
+          # 3. Buffer sleep and stop capture
           sleep 5
-          sudo kill $DUMP_PID || true
+          sudo kill $SNIFF_PID || true
           
-          # 4. Konversi ke teks detail untuk disimpan di repo
-          echo "=== DETAIL TRAFFIC REPORT ===" > capture_report.txt
-          echo "Generated on: $(date)" >> capture_report.txt
+          # 4. Generate Raw Text Report (PCAP -> TXT)
+          echo "=== GRAB NETWORK REPORT ===" > capture_report.txt
+          echo "Run Date: $(date)" >> capture_report.txt
+          echo "---------------------------" >> capture_report.txt
           
-          # Cek apakah file pcap ada dan tidak kosong
-          if [ -s temp.pcap ]; then
-            sudo tshark -r temp.pcap -V -x >> capture_report.txt
+          if [ -s raw_traffic.pcap ]; then
+            # Full verbose text to file
+            sudo tshark -r raw_traffic.pcap -V -x >> capture_report.txt
             
-            echo -e "\n=== RINGKASAN PACKET (LOG) ===\n"
-            sudo tshark -r temp.pcap -T fields -e frame.number -e _ws.col.Protocol -e ip.src -e ip.dst -e info
+            # Summary log to GitHub Actions Console (Using correct field: _ws.col.Info)
+            echo -e "\n=== PACKET SUMMARY ===\n"
+            sudo tshark -r raw_traffic.pcap -T fields -e frame.number -e _ws.col.Protocol -e ip.src -e ip.dst -e _ws.col.Info
           else
-            echo "No traffic captured." >> capture_report.txt
+            echo "Error: No traffic captured. Check host filters." >> capture_report.txt
           fi
 
-      - name: Commit to Repo
+      - name: Auto-Commit Report
         run: |
           git config --global user.name "GigaByte-Bot"
           git config --global user.email "bot@gigabyte.internal"
           git add capture_report.txt
-          # [skip ci] penting agar tidak terjadi loop build terus menerus
-          git commit -m "docs: update traffic report [skip ci]" || echo "No changes to commit"
+          git commit -m "docs: sync network report [skip ci]" || echo "Nothing to sync"
           git push
