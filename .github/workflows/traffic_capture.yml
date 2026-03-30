@@ -1,54 +1,26 @@
-name: Grab Traffic Analysis
+name: Grab Traffic Automator
 
-on: 
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # Berjalan setiap 15 menit
+  workflow_dispatch:        # Tombol manual di tab Actions
 
 jobs:
-  analyze-traffic:
+  execute-replayer:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Install Tools
-        run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark tcpdump
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.9'
 
-      - name: Run Sniff & Post
-        run: |
-          # Capture dengan filter yang lebih tajam
-          sudo tcpdump -i any -v -A -w raw.pcap host mcd-gateway.grabtaxi.com &
-          PID=$!
-          
-          pip install requests
-          python src/app.py || echo "Script Error"
-          
-          sleep 3
-          sudo kill $PID || true
-          
-          # Buat Laporan
-          echo "REPORT LOG $(date)" > capture_report.txt
-          if [ -s raw.pcap ]; then
-            sudo tshark -r raw.pcap -V -x >> capture_report.txt
-            echo -e "\n--- CONSOLE SUMMARY ---\n"
-            sudo tshark -r raw.pcap -T fields -e frame.number -e _ws.col.Protocol -e _ws.col.Info
-          fi
+      - name: Install Requirements
+        run: pip install requests
 
-      - name: Save Report
-        run: |
-          git config --global user.name "GigaByte-Bot"
-          git config --global user.email "bot@gigabyte.internal"
-          git add capture_report.txt
-          git commit -m "docs: trace log [skip ci]" || echo "No changes"
-          git push
+      - name: Run Script
+        env:
+          GRAB_TOKEN: ${{ secrets.GRAB_TOKEN }} # Ambil dari Secrets
+        run: python scripts/replayer.py
