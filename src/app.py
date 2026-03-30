@@ -1,26 +1,20 @@
 import requests
-import json
 
 def send_grab_track():
     url = "https://mcd-gateway.grabtaxi.com/v2/track"
-    
-    # Payload simulasi (Sesuaikan dengan kebutuhan Anda)
-    payload = {
-        "event": "ping",
-        "timestamp": 1710000000
-    }
-    
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "Grab/5.230.0 (Android 11)"
+        "User-Agent": "Grab/5.230.0 (Android 11)",
+        "X-Grab-ID": "giga-byte-tools-v1"
     }
+    payload = {"event": "ping_test", "type": "capture_raw_text"}
 
-    print(f"--- Mengirim request ke: {url} ---")
+    print(f"Mengirim ke: {url}")
     try:
-        # Menggunakan POST sesuai biasanya endpoint /track
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.text[:100]}") # Print 100 karakter pertama
+        # Kita gunakan verify=False jika hanya untuk testing traffic 
+        # (tapi Grab biasanya butuh SSL valid)
+        r = requests.post(url, json=payload, headers=headers, timeout=10)
+        print(f"Done! Status: {r.status_code}")
     except Exception as e:
         print(f"Error: {e}")
 
