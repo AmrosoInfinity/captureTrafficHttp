@@ -7,7 +7,6 @@ on:
 jobs:
   capture-to-text:
     runs-on: ubuntu-latest
-    # Penting: Beri izin tulis agar bot bisa push file ke repo
     permissions:
       contents: write
 
@@ -25,35 +24,30 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Dependencies
-        run: pip install requests
-
-      - name: Capture and Convert
+      - name: Run Capture and App
         run: |
-          # 1. Mulai capture ke file sementara
+          # Mulai capture
           sudo tcpdump -i any -w temp.pcap host mcd-gateway.grabtaxi.com &
           DUMP_PID=$!
           
-          # 2. Jalankan Script
+          # Jalankan Python
           python src/app.py
           
-          # 3. Beri waktu paket sampai, lalu matikan
           sleep 5
           sudo kill $DUMP_PID || true
           
-          # 4. KONVERSI KE RAW TEXT (Format yang mudah dibaca di HP)
-          # -V: Detail lengkap protokol
-          # -x: Menampilkan Hex dan ASCII (biar kelihatan data mentahnya)
-          echo "=== GRAB TRAFFIC REPORT ===" > capture_report.txt
-          echo "Generated on: $(date)" >> capture_report.txt
-          echo "---------------------------" >> capture_report.txt
+          # Konversi ke teks detail untuk disimpan di repo
+          echo "=== DETAIL TRAFFIC REPORT ===" > capture_report.txt
           sudo tshark -r temp.pcap -V -x >> capture_report.txt
+          
+          # Buat ringkasan satu baris untuk dibaca cepat di console log
+          echo -e "\n=== RINGKASAN PACKET (LOG) ===\n"
+          sudo tshark -r temp.pcap -T fields -e frame.number -e _ws.col.Protocol -e ip.src -e ip.dst -e info
 
-      - name: Commit Raw Text to Repo
+      - name: Commit to Repo
         run: |
           git config --global user.name "GigaByte-Bot"
           git config --global user.email "bot@gigabyte.internal"
           git add capture_report.txt
-          # skip ci agar tidak terjadi looping workflow
-          git commit -m "docs: update raw traffic report [skip ci]" || echo "No changes to commit"
+          git commit -m "docs: update traffic report [skip ci]" || echo "No changes"
           git push
