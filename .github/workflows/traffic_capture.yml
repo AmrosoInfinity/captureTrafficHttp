@@ -12,58 +12,55 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Install System Tools (TShark & Tcpdump)
+      - name: Install Network Tools
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark tcpdump
 
-      - name: Setup Python Environment
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
-      - name: Install Python Dependencies
+      - name: Install Requirements
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests; fi
+          pip install requests
 
-      - name: Network Capture & Execution
+      - name: Sniff & Execute
         run: |
-          # 1. Start Capture (Targeting Grab Gateway)
-          sudo tcpdump -i any -w raw_traffic.pcap host mcd-gateway.grabtaxi.com &
-          SNIFF_PID=$!
+          # Mulai Sniffer (Filter Host Grab)
+          sudo tcpdump -i any -w grab_raw.pcap host mcd-gateway.grabtaxi.com &
+          SNIFFER_PID=$!
           
-          # 2. Run Python Script (Mimicking App Traffic)
-          python src/app.py || echo "Script execution finished with warning/error"
+          # Jalankan Script Utama
+          python src/app.py || echo "Script crash atau gagal"
           
-          # 3. Buffer sleep and stop capture
           sleep 5
-          sudo kill $SNIFF_PID || true
+          sudo kill $SNIFFER_PID || true
           
-          # 4. Generate Raw Text Report (PCAP -> TXT)
-          echo "=== GRAB NETWORK REPORT ===" > capture_report.txt
-          echo "Run Date: $(date)" >> capture_report.txt
-          echo "---------------------------" >> capture_report.txt
+          # Bangun Report Teks
+          echo "=== GRAB TRAFFIC ANALYSIS REPORT ===" > capture_report.txt
+          echo "Timestamp: $(date)" >> capture_report.txt
           
-          if [ -s raw_traffic.pcap ]; then
-            # Full verbose text to file
-            sudo tshark -r raw_traffic.pcap -V -x >> capture_report.txt
+          if [ -s grab_raw.pcap ]; then
+            # Full Verbose Dump ke File
+            sudo tshark -r grab_raw.pcap -V -x >> capture_report.txt
             
-            # Summary log to GitHub Actions Console (Using correct field: _ws.col.Info)
-            echo -e "\n=== PACKET SUMMARY ===\n"
-            sudo tshark -r raw_traffic.pcap -T fields -e frame.number -e _ws.col.Protocol -e ip.src -e ip.dst -e _ws.col.Info
+            # Ringkasan di Console Actions (Gunakan _ws.col.Info)
+            echo -e "\n--- LIVE PACKET SUMMARY ---\n"
+            sudo tshark -r grab_raw.pcap -T fields -e frame.number -e _ws.col.Protocol -e ip.dst -e _ws.col.Info
           else
-            echo "Error: No traffic captured. Check host filters." >> capture_report.txt
+            echo "Failed to capture any packets." >> capture_report.txt
           fi
 
-      - name: Auto-Commit Report
+      - name: Push Report to Repo
         run: |
           git config --global user.name "GigaByte-Bot"
           git config --global user.email "bot@gigabyte.internal"
           git add capture_report.txt
-          git commit -m "docs: sync network report [skip ci]" || echo "Nothing to sync"
+          git commit -m "docs: update network log [skip ci]" || echo "No changes"
           git push
