@@ -1,23 +1,28 @@
 import requests
-import time
+import json
 
-def send_requests():
-    print("--- Memulai pengiriman traffic HTTP ---")
+def send_grab_track():
+    url = "https://mcd-gateway.grabtaxi.com/v2/track"
     
-    # Contoh request ke API publik
-    targets = [
-        "http://google.com",
-        "http://httpbin.org/get",
-        "http://example.com"
-    ]
+    # Payload simulasi (Sesuaikan dengan kebutuhan Anda)
+    payload = {
+        "event": "ping",
+        "timestamp": 1710000000
+    }
     
-    for url in targets:
-        try:
-            response = requests.get(url, timeout=10)
-            print(f"Request ke {url} | Status: {response.status_code}")
-        except Exception as e:
-            print(f"Gagal memanggil {url}: {e}")
-        time.sleep(1)
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Grab/5.230.0 (Android 11)"
+    }
+
+    print(f"--- Mengirim request ke: {url} ---")
+    try:
+        # Menggunakan POST sesuai biasanya endpoint /track
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text[:100]}") # Print 100 karakter pertama
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    send_requests()
+    send_grab_track()
