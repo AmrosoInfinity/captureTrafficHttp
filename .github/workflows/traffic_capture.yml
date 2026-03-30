@@ -1,12 +1,18 @@
-name: Grab Traffic Capture
+name: Grab Traffic Raw Text
 
-on: [push, workflow_dispatch]
+on: 
+  push:
+  workflow_dispatch:
 
 jobs:
-  capture:
+  capture-to-text:
     runs-on: ubuntu-latest
+    # Penting: Beri izin tulis agar bot bisa push file ke repo
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
       - name: Install TShark
@@ -14,41 +20,40 @@ jobs:
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install -r requirements.txt
+        run: pip install requests
 
-      - name: Run TShark & Send Request
+      - name: Capture and Convert
         run: |
-          # Filter TShark untuk melihat Handshake TLS ke Grab
-          # Kami menggunakan port 443 dan filter SNI
-          sudo tshark -i any -f "tcp port 443" -Y "tls.handshake.extensions_server_name" \
-            -T fields -e frame.time_relative -e ip.dst -e tls.handshake.extensions_server_name &
+          # 1. Mulai capture ke file sementara
+          sudo tcpdump -i any -w temp.pcap host mcd-gateway.grabtaxi.com &
+          DUMP_PID=$!
           
-          TSHARK_PID=$!
-          sleep 5 # Beri waktu TShark standby
-          
-          # Jalankan script pengirim traffic
+          # 2. Jalankan Script
           python src/app.py
           
+          # 3. Beri waktu paket sampai, lalu matikan
           sleep 5
-          sudo kill $TSHARK_PID || true
+          sudo kill $DUMP_PID || true
+          
+          # 4. KONVERSI KE RAW TEXT (Format yang mudah dibaca di HP)
+          # -V: Detail lengkap protokol
+          # -x: Menampilkan Hex dan ASCII (biar kelihatan data mentahnya)
+          echo "=== GRAB TRAFFIC REPORT ===" > capture_report.txt
+          echo "Generated on: $(date)" >> capture_report.txt
+          echo "---------------------------" >> capture_report.txt
+          sudo tshark -r temp.pcap -V -x >> capture_report.txt
 
-      - name: Full Packet Capture (Optional)
-        # Menangkap paket mentah untuk dianalisis di PC lokal dengan Wireshark
+      - name: Commit Raw Text to Repo
         run: |
-          sudo tcpdump -i any -w grab_traffic.pcap host mcd-gateway.grabtaxi.com &
-          TCPDUMP_PID=$!
-          python src/app.py
-          sleep 2
-          sudo kill $TCPDUMP_PID || true
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: grab-pcap-file
-          path: grab_traffic.pcap
+          git config --global user.name "GigaByte-Bot"
+          git config --global user.email "bot@gigabyte.internal"
+          git add capture_report.txt
+          # skip ci agar tidak terjadi looping workflow
+          git commit -m "docs: update raw traffic report [skip ci]" || echo "No changes to commit"
+          git push
