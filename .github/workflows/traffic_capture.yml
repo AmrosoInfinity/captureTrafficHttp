@@ -12,10 +12,10 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout Repo
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Network Tools
+      - name: Install Tools
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark tcpdump
@@ -25,42 +25,30 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Requirements
+      - name: Run Sniff & Post
         run: |
-          python -m pip install --upgrade pip
+          # Capture dengan filter yang lebih tajam
+          sudo tcpdump -i any -v -A -w raw.pcap host mcd-gateway.grabtaxi.com &
+          PID=$!
+          
           pip install requests
-
-      - name: Sniff & Execute
-        run: |
-          # Mulai Sniffer (Filter Host Grab)
-          sudo tcpdump -i any -w grab_raw.pcap host mcd-gateway.grabtaxi.com &
-          SNIFFER_PID=$!
+          python src/app.py || echo "Script Error"
           
-          # Jalankan Script Utama
-          python src/app.py || echo "Script crash atau gagal"
+          sleep 3
+          sudo kill $PID || true
           
-          sleep 5
-          sudo kill $SNIFFER_PID || true
-          
-          # Bangun Report Teks
-          echo "=== GRAB TRAFFIC ANALYSIS REPORT ===" > capture_report.txt
-          echo "Timestamp: $(date)" >> capture_report.txt
-          
-          if [ -s grab_raw.pcap ]; then
-            # Full Verbose Dump ke File
-            sudo tshark -r grab_raw.pcap -V -x >> capture_report.txt
-            
-            # Ringkasan di Console Actions (Gunakan _ws.col.Info)
-            echo -e "\n--- LIVE PACKET SUMMARY ---\n"
-            sudo tshark -r grab_raw.pcap -T fields -e frame.number -e _ws.col.Protocol -e ip.dst -e _ws.col.Info
-          else
-            echo "Failed to capture any packets." >> capture_report.txt
+          # Buat Laporan
+          echo "REPORT LOG $(date)" > capture_report.txt
+          if [ -s raw.pcap ]; then
+            sudo tshark -r raw.pcap -V -x >> capture_report.txt
+            echo -e "\n--- CONSOLE SUMMARY ---\n"
+            sudo tshark -r raw.pcap -T fields -e frame.number -e _ws.col.Protocol -e _ws.col.Info
           fi
 
-      - name: Push Report to Repo
+      - name: Save Report
         run: |
           git config --global user.name "GigaByte-Bot"
           git config --global user.email "bot@gigabyte.internal"
           git add capture_report.txt
-          git commit -m "docs: update network log [skip ci]" || echo "No changes"
+          git commit -m "docs: trace log [skip ci]" || echo "No changes"
           git push
