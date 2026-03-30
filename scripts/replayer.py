@@ -7,7 +7,7 @@ def run_replayer():
     url = "https://mcd-gateway.grabtaxi.com/v2/track"
     
     # 1. Load Template Biner (Pastikan file ini ada di repo)
-    binary_path = "templates/payload_template.bin"
+    binary_path = "templates/payload_template"
     if not os.path.exists(binary_path):
         print(f"[!] Error: File {binary_path} tidak ditemukan!")
         return
@@ -29,7 +29,7 @@ def run_replayer():
         "x-token": x_token,
         "User-Agent": "Scribe/4.14.0/pax/Android",
         "x-batchId": str(uuid.uuid4()),
-        "X-EVENT-COUNT": "14", # Sesuaikan dengan event di biner Abang
+        "X-EVENT-COUNT": "822", # Sesuaikan dengan event di biner Abang
         "x-batch-timestamp": current_time_ms,
         "Content-Type": "application/octet-stream",
         "Content-Encoding": "gzip", # Biner Grab biasanya di-gzip
