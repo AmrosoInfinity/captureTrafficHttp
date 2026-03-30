@@ -1,17 +1,18 @@
-name: HTTP Traffic Capture Workflow
+name: Grab Traffic Capture
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch: # Memungkinkan menjalankan manual dari tab Actions
+on: [push, workflow_dispatch]
 
 jobs:
-  capture-job:
+  capture:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install TShark
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -19,31 +20,35 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Start Traffic Capture (tcpdump)
+      - name: Run TShark & Send Request
         run: |
-          # Menangkap traffic di port 80 (HTTP) dan menyimpan ke file .pcap
-          # "&" menjalankan proses di background
-          sudo tcpdump -i any -w network_traffic.pcap port 80 &
-          # Simpan PID tcpdump agar bisa dimatikan nanti
-          echo "TCPDUMP_PID=$!" >> $GITHUB_ENV
-          echo "Tcpdump mulai merekam..."
-
-      - name: Run Python Script
-        run: |
+          # Filter TShark untuk melihat Handshake TLS ke Grab
+          # Kami menggunakan port 443 dan filter SNI
+          sudo tshark -i any -f "tcp port 443" -Y "tls.handshake.extensions_server_name" \
+            -T fields -e frame.time_relative -e ip.dst -e tls.handshake.extensions_server_name &
+          
+          TSHARK_PID=$!
+          sleep 5 # Beri waktu TShark standby
+          
+          # Jalankan script pengirim traffic
           python src/app.py
+          
+          sleep 5
+          sudo kill $TSHARK_PID || true
 
-      - name: Stop Traffic Capture
+      - name: Full Packet Capture (Optional)
+        # Menangkap paket mentah untuk dianalisis di PC lokal dengan Wireshark
         run: |
-          # Matikan proses tcpdump menggunakan PID yang disimpan tadi
+          sudo tcpdump -i any -w grab_traffic.pcap host mcd-gateway.grabtaxi.com &
+          TCPDUMP_PID=$!
+          python src/app.py
+          sleep 2
           sudo kill $TCPDUMP_PID || true
-          echo "Tcpdump dihentikan."
 
-      - name: Upload Traffic Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: capture-result
-          path: network_traffic.pcap
-          retention-days: 5
+          name: grab-pcap-file
+          path: grab_traffic.pcap
